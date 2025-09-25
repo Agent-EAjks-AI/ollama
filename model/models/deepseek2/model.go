@@ -120,6 +120,11 @@ func (attn *Attention) Forward(ctx ml.Context, hiddenStates, positions ml.Tensor
 	return attn.Output.Forward(ctx, attention)
 }
 
+// this is the MLA code
+func (attn *Attention) Forward(ctx ml.Context, hiddenStates, positions ml.Tensor, cache kvcache.Cache, opts *Options) ml.Tensor {
+	batchSize := hiddenStates.Dim(1)
+}
+
 type MLP interface {
 	Forward(ml.Context, ml.Tensor, *Options) ml.Tensor
 }
