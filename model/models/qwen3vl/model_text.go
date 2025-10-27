@@ -10,6 +10,8 @@ import (
 	"github.com/ollama/ollama/kvcache"
 	"github.com/ollama/ollama/ml"
 	"github.com/ollama/ollama/ml/nn"
+	"github.com/ollama/ollama/ml/nn/fast"
+	"github.com/ollama/ollama/ml/nn/rope"
 	"github.com/ollama/ollama/model"
 )
 
@@ -35,6 +37,12 @@ func (o TextOptions) headDim() int {
 	return cmp.Or(o.keyLength, o.valueLength, o.hiddenSize/o.numHeads)
 }
 
+func (o TextOptions) applyRotaryPositionalEmbedding(ctx ml.Context, t, p ml.Tensor) ml.Tensor {
+	return fast.RoPE(ctx, t, p, o.headDim(), o.ropeBase, 1/float32(math.Sqrt(float64(o.ropeScale))),
+		rope.WithMRoPESections(o.mropeSections),
+	)
+}
+
 type TextAttention struct {
 	Query     *nn.Linear  `gguf:"attn_q"`
 	QueryNorm *nn.RMSNorm `gguf:"attn_q_norm"`
@@ -44,7 +52,7 @@ type TextAttention struct {
 	Output    *nn.Linear  `gguf:"attn_output"`
 }
 
-func (sa *TextAttention) Forward(ctx ml.Context, hiddenStates, cos, sin ml.Tensor, cache kvcache.Cache, opts *TextOptions) ml.Tensor {
+func (sa *TextAttention) Forward(ctx ml.Context, hiddenStates, positions ml.Tensor, cache kvcache.Cache, opts *TextOptions) ml.Tensor {
 	batchSize := hiddenStates.Dim(1)
 
 	query := sa.Query.Forward(ctx, hiddenStates)
@@ -58,8 +66,8 @@ func (sa *TextAttention) Forward(ctx ml.Context, hiddenStates, cos, sin ml.Tenso
 	query = sa.QueryNorm.Forward(ctx, query, opts.eps)
 	key = sa.KeyNorm.Forward(ctx, key, opts.eps)
 
-	query = applyRotaryPositionalEmbedding(ctx, query, cos, sin)
-	key = applyRotaryPositionalEmbedding(ctx, key, cos, sin)
+	query = opts.applyRotaryPositionalEmbedding(ctx, query, positions)
+	key = opts.applyRotaryPositionalEmbedding(ctx, key, positions)
 
 	attention := nn.Attention(ctx, query, key, value, 1./math.Sqrt(float64(opts.headDim())), cache)
 	attention = attention.Reshape(ctx, attention.Dim(0)*attention.Dim(1), batchSize)
@@ -125,10 +133,10 @@ type TextLayer struct {
 	TextMLP
 }
 
-func (d *TextLayer) Forward(ctx ml.Context, hiddenStates, cos, sin, outputs ml.Tensor, cache kvcache.Cache, opts *TextOptions) ml.Tensor {
+func (d *TextLayer) Forward(ctx ml.Context, hiddenStates, positions, outputs ml.Tensor, cache kvcache.Cache, opts *TextOptions) ml.Tensor {
 	residual := hiddenStates
 	hiddenStates = d.AttentionNorm.Forward(ctx, hiddenStates, opts.eps)
-	hiddenStates = d.TextAttention.Forward(ctx, hiddenStates, cos, sin, cache, opts)
+	hiddenStates = d.TextAttention.Forward(ctx, hiddenStates, positions, cache, opts)
 
 	if outputs != nil {
 		hiddenStates = hiddenStates.Rows(ctx, outputs)
@@ -151,42 +159,6 @@ type TextModel struct {
 	Layers []TextLayer `gguf:"blk"`
 
 	Options *TextOptions
-}
-
-func (m *TextModel) rotaryEmbedding(ctx ml.Context, positions ml.Tensor) (_, _ ml.Tensor) {
-	positions = positions.Reshape(ctx, 1, positions.Dim(0), positions.Dim(1))
-	if len(m.Options.inverseFrequenciesCache) == 0 {
-		m.Options.inverseFrequenciesCache = make([]float32, m.Options.headDim()/2)
-		for i := range m.Options.inverseFrequenciesCache {
-			frequency := float32(math.Pow(float64(m.Options.ropeBase), float64(i*2)/float64(m.Options.headDim())))
-			m.Options.inverseFrequenciesCache[i] = 1 / frequency
-		}
-	}
-
-	inverseFrequencies := ctx.Input().FromFloats(m.Options.inverseFrequenciesCache, 1, len(m.Options.inverseFrequenciesCache))
-
-	positions = positions.Cast(ctx, ml.DTypeF32)
-	frequencies := inverseFrequencies.Mulmat(ctx, positions)
-
-	interleaved := frequencies.View(ctx,
-		0*frequencies.Stride(2), frequencies.Dim(0),
-		frequencies.Stride(1), frequencies.Dim(1),
-	)
-
-	for _, i := range []int{1, 2} {
-		args := []int{
-			i * frequencies.Stride(0), 1,
-			3 * frequencies.Stride(0), m.Options.mropeSections[i],
-			frequencies.Stride(1), frequencies.Dim(1),
-		}
-
-		ctx.Forward(frequencies.View(ctx, i*frequencies.Stride(2)+args[0], args[1:]...).
-			Copy(ctx, interleaved.View(ctx, args[0], args[1:]...)))
-	}
-
-	interleaved = interleaved.Concat(ctx, interleaved, 0)
-	interleaved = interleaved.Reshape(ctx, interleaved.Dim(0), 1, interleaved.Dim(1), interleaved.Dim(2))
-	return interleaved.Cos(ctx), interleaved.Sin(ctx)
 }
 
 var _ model.Model = (*Model)(nil)
