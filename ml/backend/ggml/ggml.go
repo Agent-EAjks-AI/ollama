@@ -1326,6 +1326,8 @@ func (t *Tensor) Copy(ctx ml.Context, t2 ml.Tensor) ml.Tensor {
 	}
 }
 
+// inferShape updates shape in place to automatically set a single -1 dimesion
+// based on the input tensor and the other dimensions
 func inferShape(t *Tensor, shape []int) {
 	total := 1
 	for _, dim := range t.Shape() {
@@ -1334,14 +1336,20 @@ func inferShape(t *Tensor, shape []int) {
 
 	dim := -1
 	for i := range shape {
-		if shape[i] > 0 {
-			total /= shape[i]
-		} else if shape[i] == -1 {
+		switch shape[i] {
+		case -1:
 			if dim != -1 {
 				panic("only one dimension can be inferred")
 			}
-
 			dim = i
+		case 0:
+			panic("dimension cannot be zero")
+		default:
+			if total%shape[i] != 0 {
+				panic("cannot infer dimension")
+			}
+
+			total /= shape[i]
 		}
 	}
 
