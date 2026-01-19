@@ -10,11 +10,12 @@ import (
 	"github.com/ollama/ollama/ml"
 	"github.com/ollama/ollama/model"
 	"github.com/ollama/ollama/model/input"
+	"github.com/ollama/ollama/tokenizers"
 )
 
 type Model struct {
 	model.Base
-	model.BytePairEncoding
+	tokenizers.Tokenizer
 
 	*TextModel
 	*VisionModel `gguf:"v"`
@@ -27,8 +28,8 @@ var _ model.MultimodalProcessor = (*Model)(nil)
 
 func New(c fs.Config) (model.Model, error) {
 	m := &Model{
-		BytePairEncoding: model.NewBytePairEncoding(
-			&model.Vocabulary{
+		Tokenizer: tokenizers.NewBytePairEncoding(
+			&tokenizers.Vocabulary{
 				Values: c.Strings("tokenizer.ggml.tokens"),
 				Types:  c.Ints("tokenizer.ggml.token_type"),
 				Merges: c.Strings("tokenizer.ggml.merges"),

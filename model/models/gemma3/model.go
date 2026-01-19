@@ -12,11 +12,12 @@ import (
 	"github.com/ollama/ollama/ml/nn"
 	"github.com/ollama/ollama/model"
 	"github.com/ollama/ollama/model/input"
+	"github.com/ollama/ollama/tokenizers"
 )
 
 type Model struct {
 	model.Base
-	model.TextProcessor
+	tokenizers.Tokenizer
 
 	*VisionModel `gguf:"v"`
 	*TextModel
@@ -54,7 +55,7 @@ func (p *MultiModalProjector) Forward(ctx ml.Context, visionOutputs ml.Tensor, i
 }
 
 func New(c fs.Config) (model.Model, error) {
-	vocabulary := model.Vocabulary{
+	vocabulary := tokenizers.Vocabulary{
 		Values: c.Strings("tokenizer.ggml.tokens"),
 		Scores: c.Floats("tokenizer.ggml.scores"),
 		Types:  c.Ints("tokenizer.ggml.token_type"),
@@ -70,19 +71,19 @@ func New(c fs.Config) (model.Model, error) {
 		),
 	}
 
-	var processor model.TextProcessor
+	var tokenizer tokenizers.Tokenizer
 	switch c.String("tokenizer.ggml.model") {
 	case "gpt2":
-		processor = model.NewBytePairEncoding(&vocabulary)
+		tokenizer = tokenizers.NewBytePairEncoding(&vocabulary)
 	default:
 		// Previous uploads of Gemma 3 on Ollama did not have token 106
 		// (i.e. "<end_of_turn>") so we need to add in case it's not already present
 		vocabulary.EOS = append(vocabulary.EOS, int32(c.Uint("tokenizer.ggml.eot_token_id", 106)))
-		processor = model.NewSentencePiece(&vocabulary)
+		tokenizer = tokenizers.NewSentencePiece(&vocabulary)
 	}
 
 	m := Model{
-		TextProcessor:  processor,
+		Tokenizer:      tokenizer,
 		ImageProcessor: newImageProcessor(c),
 		VisionModel:    newVisionModel(c),
 		TextModel:      newTextModel(c),

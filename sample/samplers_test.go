@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ollama/ollama/model"
+	"github.com/ollama/ollama/tokenizers"
 )
 
 func TestWeighted(t *testing.T) {
@@ -60,7 +60,7 @@ func TestWeighted(t *testing.T) {
 	}
 }
 
-func modelHelper(t testing.TB) model.BytePairEncoding {
+func modelHelper(t testing.TB) tokenizers.Tokenizer {
 	t.Helper()
 
 	f, err := os.Open(filepath.Join("..", "model", "testdata", "llama3.2", "encoder.json"))
@@ -81,8 +81,8 @@ func modelHelper(t testing.TB) model.BytePairEncoding {
 
 	merges := make([]string, 0, 1)
 	// Only need vocab for Grammar Test
-	return model.NewBytePairEncoding(
-		&model.Vocabulary{
+	return tokenizers.NewBytePairEncoding(
+		&tokenizers.Vocabulary{
 			Values: tokens,
 			Types:  make([]int32, len(vocab)),
 			Merges: merges,

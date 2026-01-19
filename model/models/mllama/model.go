@@ -11,11 +11,12 @@ import (
 	"github.com/ollama/ollama/ml/nn"
 	"github.com/ollama/ollama/model"
 	"github.com/ollama/ollama/model/input"
+	"github.com/ollama/ollama/tokenizers"
 )
 
 type Model struct {
 	model.Base
-	model.BytePairEncoding
+	tokenizers.Tokenizer
 
 	*VisionModel `gguf:"v"`
 	*TextModel
@@ -32,8 +33,8 @@ const (
 
 func New(c fs.Config) (model.Model, error) {
 	m := Model{
-		BytePairEncoding: model.NewBytePairEncoding(
-			&model.Vocabulary{
+		Tokenizer: tokenizers.NewBytePairEncoding(
+			&tokenizers.Vocabulary{
 				Values: c.Strings("tokenizer.ggml.tokens"),
 				Types:  c.Ints("tokenizer.ggml.token_type"),
 				Merges: c.Strings("tokenizer.ggml.merges"),

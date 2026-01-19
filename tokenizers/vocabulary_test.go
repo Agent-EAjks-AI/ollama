@@ -1,4 +1,4 @@
-package model
+package tokenizers
 
 import (
 	"testing"
