@@ -40,6 +40,7 @@ type Editor interface {
 
 // integrations is the registry of available integrations.
 var integrations = map[string]Runner{
+	"clawdbot": &Clawdbot{},
 	"claude":   &Claude{},
 	"codex":    &Codex{},
 	"droid":    &Droid{},
@@ -241,6 +242,7 @@ func LaunchCmd(checkServerHeartbeat func(cmd *cobra.Command, args []string) erro
 		Long: `Launch an integration configured with Ollama models.
 
 Supported integrations:
+  clawdbot  Clawdbot
   claude    Claude Code
   codex     Codex
   droid     Droid
